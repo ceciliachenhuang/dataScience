@@ -1,0 +1,73 @@
+---
+title: "NYPD_Shooting_Incident_Data_historic"
+author: "C. Chen"
+date: "1/26/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Description:
+2 visualizations are done with the NYPD Shooting Incident Data. The variables used are: the BORO, OCCUR_DATE and MURDER_FLAG. The data was transformed to categorize by borough and 2 graphs are created. One showing the Shootings per borough and the other one showing the murders per borough. 
+
+Later another data subset is created with the data from the Staten Island borough and a linear prediction is made comparing shootings and murders. As a result we see that the prediction is a linear trend which proves that there's a relationship between the shootings and murders but there's definitely other factors that need to included in order to have a better prediction due to the outliers.
+
+Some Bias is that we are not taking into consideration the population proportions to compare the boroughs. Another bias can be racial because you can get into a conclusion but I would like to know more about the social status and environments related to each incident. I noticed that there's a lot of missing data for perpetrator. I wanted to do an analysis comparing the victims and the perpetrator but noticed there was a lot of missing data.  
+```{r get_jhu_data}
+library(tidyverse)
+url_in<-"https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+shooting_incident_data<-read_csv(url_in)
+shooting_incident_data<-subset (shooting_incident_data, select = -c(LOCATION_DESC,INCIDENT_KEY,OCCUR_TIME,PRECINCT,PERP_AGE_GROUP,PERP_SEX, PERP_RACE,X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat,JURISDICTION_CODE))
+colnames(shooting_incident_data)[colnames(shooting_incident_data) == "BORO"] <- "BOROUGH"
+colnames(shooting_incident_data)[colnames(shooting_incident_data) == "VIC_AGE_GROUP"] <- "VICTIM_AGE"
+colnames(shooting_incident_data)[colnames(shooting_incident_data) == "VIC_SEX"] <- "VICTIM_SEX"
+colnames(shooting_incident_data)[colnames(shooting_incident_data) == "VIC_RACE"] <- "VICTIM_RACE"
+library(lubridate)
+shooting_incident_data <- shooting_incident_data %>%
+    mutate(DATE=mdy(OCCUR_DATE),MURDER=as.integer(shooting_incident_data$STATISTICAL_MURDER_FLAG),countOccurence=1)
+summary(shooting_incident_data)
+shootings_by_boro <-shooting_incident_data%>%
+  group_by(BOROUGH)%>%
+  summarize(MURDERS = sum(MURDER),SHOOTINGS = sum(countOccurence)) %>%
+  select(BOROUGH,MURDERS,SHOOTINGS)%>%
+  ungroup()
+ggplot(shootings_by_boro, aes(x = BOROUGH, y = SHOOTINGS, fill = SHOOTINGS)) + 
+     geom_bar(stat = "identity") +
+     geom_text(aes(label = SHOOTINGS), vjust = 0) +ggtitle("Shootings per Borough")+
+     theme(plot.title=element_text(hjust=0.5))
+ggplot(shootings_by_boro, aes(x = BOROUGH, y = MURDERS, fill = MURDERS)) + 
+     geom_bar(stat = "identity") +
+     geom_text(aes(label = MURDERS), vjust = 0) +ggtitle("Murders per Borough")+
+     theme(plot.title=element_text(hjust=0.5))
+shootings_by_dates <-shooting_incident_data%>%
+  group_by(DATE,BOROUGH)%>%
+  summarize(MURDERS = sum(MURDER),SHOOTINGS = sum(countOccurence)) %>%
+  select(BOROUGH,MURDERS,SHOOTINGS)%>%
+  ungroup()
+boro <-"STATEN ISLAND" 
+shootings_by_dates %>%
+  filter(BOROUGH == boro) %>%
+  ggplot(aes(x = DATE, y = SHOOTINGS))+
+  geom_line(aes(color = "SHOOTINGS")) +
+  geom_point(aes(color = "SHOOTINGS"))+
+  geom_line(aes(y= MURDERS, color = "MURDERS")) +
+  geom_point(aes(y=MURDERS, color = "MURDERS")) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle =90,hjust=1)) +
+  labs(title = str_c("Shootings vs Murders in ", boro), y=NULL)
+shootings_by_Staten_Island<-shootings_by_dates %>% 
+     filter(BOROUGH == "STATEN ISLAND") %>%
+     select(BOROUGH,MURDERS,SHOOTINGS,DATE)%>%
+     ungroup()
+mod<-lm( MURDERS ~ SHOOTINGS,data=shootings_by_Staten_Island)
+summary(mod)
+shootings_by_Staten_Island_with_pred<-shootings_by_Staten_Island%>%
+  mutate(pred=predict(mod))
+shootings_by_Staten_Island_with_pred %>% ggplot() +
+ geom_point(aes(x = SHOOTINGS, y = MURDERS ), color ="blue")+
+ geom_point(aes(x = SHOOTINGS, y = pred), color = "red")
+```
